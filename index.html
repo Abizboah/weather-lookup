@@ -235,7 +235,9 @@
     line-height: 1.6;
   }
   @media (prefers-reduced-motion: no-preference) {
+    .report.show { animation: fadein 0.4s ease-out; }
     .report.show .strip { animation: rise 0.25s ease-out; }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
     @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   }
 </style>
@@ -588,7 +590,10 @@ function render(geo, wx, idx, date, time, usedForecast, shiftMin) {
     ' · Grid point ' + geo.latitude.toFixed(3) + ', ' + geo.longitude.toFixed(3) +
     ' · Modeled hourly data, not a certified station record.';
 
-  document.getElementById('report').classList.add('show');
+  const rep = document.getElementById('report');
+  rep.classList.remove('show');
+  void rep.offsetWidth; // restart the entry animation on repeat lookups
+  rep.classList.add('show');
 }
 </script>
 </body>
