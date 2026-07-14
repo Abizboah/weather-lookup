@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conditions — Historical Weather Lookup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14181d;
+    --panel: #1c2229;
+    --panel-2: #232b34;
+    --line: #2e3844;
+    --text: #e8ecef;
+    --muted: #8a94a0;
+    --amber: #ffb020;
+    --amber-dim: rgba(255, 176, 32, 0.12);
+    --green: #4cc38a;
+    --red: #ff6369;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Archivo', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+
+  header { margin-bottom: 24px; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+  h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .field { margin-bottom: 14px; }
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  input[type="text"], input[type="date"], input[type="time"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 15px;
+    padding: 11px 12px;
+    color-scheme: dark;
+  }
+  input:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 1px;
+    border-color: transparent;
+  }
+  .row { display: flex; gap: 12px; }
+  .row .field { flex: 1; }
+
+  .unit-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .unit-toggle button {
+    background: var(--bg);
+    color: var(--muted);
+    border: none;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  .unit-toggle button.active { background: var(--amber-dim); color: var(--amber); }
+  .unit-toggle button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+
+  .go {
+    width: 100%;
+    margin-top: 6px;
+    background: var(--amber);
+    color: #1a1206;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Archivo', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 13px;
+    cursor: pointer;
+  }
+  .go:hover { filter: brightness(1.06); }
+  .go:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .go:disabled { opacity: 0.5; cursor: wait; }
+
+  .status {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 14px;
+    min-height: 18px;
+  }
+  .status.err { color: var(--red); }
+
+  .alt-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .alt-chips button {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 999px;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 12px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .alt-chips button:hover { color: var(--text); border-color: var(--muted); }
+
+  /* Report strip */
+  .report { margin-top: 24px; display: none; }
+  .report.show { display: block; }
+  .strip {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--amber);
+    border-radius: 10px;
+    padding: 22px;
+  }
+  .strip-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+  }
+  .place { font-size: 17px; font-weight: 600; }
+  .when {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .headline { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .big-temp {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 52px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--amber);
+  }
+  .cond { font-size: 18px; font-weight: 600; }
+  .feels { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .daylight {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    margin-left: auto;
+  }
+  .daylight .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .daylight.day .dot { background: var(--green); }
+  .daylight.day { color: var(--green); }
+  .daylight.dark .dot { background: #7a8fb5; }
+  .daylight.dark { color: #9fb3d8; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .cell { background: var(--panel-2); padding: 12px 14px; }
+  .cell .k {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .cell .v {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .hours { margin-top: 18px; }
+  .hours h3 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12.5px; }
+  th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+  tr.target td { color: var(--amber); font-weight: 600; }
+  .tbl-scroll { overflow-x: auto; }
+
+  .source {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 14px;
+    line-height: 1.6;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .report.show .strip { animation: rise 0.25s ease-out; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Conditions Lookup</div>
+    <h1>Historical weather, one query</h1>
+    <div class="sub">Town, "city, state", or ZIP + date + time. Hourly records back to 1940.</div>
+  </header>
+
+  <div class="card">
+    <div class="field">
+      <label for="loc">Location</label>
+      <input type="text" id="loc" placeholder="e.g. Bakersfield, CA — or 11201" autocomplete="off">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="date">Date</label>
+        <input type="date" id="date">
+      </div>
+      <div class="field">
+        <label for="time">Local time</label>
+        <input type="time" id="time" value="12:00">
+      </div>
+    </div>
+    <div class="field">
+      <label>Units</label>
+      <div class="unit-toggle" role="group" aria-label="Temperature units">
+        <button id="uF" class="active" onclick="setUnit('F')">°F</button>
+        <button id="uC" onclick="setUnit('C')">°C</button>
+      </div>
+    </div>
+    <button class="go" id="go" onclick="lookup()">Look up conditions</button>
+    <div class="status" id="status" role="status"></div>
+    <div class="alt-chips" id="alts"></div>
+  </div>
+
+  <div class="report" id="report">
+    <div class="strip">
+      <div class="strip-head">
+        <div>
+          <div class="place" id="rPlace"></div>
+          <div class="when" id="rWhen"></div>
+        </div>
+        <div class="daylight" id="rDaylight"><span class="dot"></span><span id="rDaylightText"></span></div>
+      </div>
+      <div class="headline">
+        <div>
+          <div class="big-temp" id="rTemp"></div>
+          <div class="feels" id="rFeels"></div>
+        </div>
+        <div class="cond" id="rCond"></div>
+      </div>
+      <div class="grid" id="rGrid"></div>
+      <div class="hours">
+        <h3>Surrounding hours</h3>
+        <div class="tbl-scroll"><table id="rTable"></table></div>
+      </div>
+      <div class="source" id="rSource"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let unit = 'F';
+
+function setUnit(u) {
+  unit = u;
+  document.getElementById('uF').classList.toggle('active', u === 'F');
+  document.getElementById('uC').classList.toggle('active', u === 'C');
+}
+
+// Default the date field to today
+document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+
+document.getElementById('loc').addEventListener('keydown', e => { if (e.key === 'Enter') lookup(); });
+
+const WMO = {
+  0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+  45: 'Fog', 48: 'Freezing fog',
+  51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
+  56: 'Freezing drizzle', 57: 'Heavy freezing drizzle',
+  61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
+  66: 'Freezing rain', 67: 'Heavy freezing rain',
+  71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+  80: 'Light showers', 81: 'Showers', 82: 'Violent showers',
+  85: 'Snow showers', 86: 'Heavy snow showers',
+  95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Severe thunderstorm w/ hail'
+};
+
+function compass(deg) {
+  if (deg == null) return '—';
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function setStatus(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.classList.toggle('err', !!isErr);
+}
+
+async function geocode(q) {
+  const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
+    encodeURIComponent(q) + '&count=5&language=en&format=json';
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Geocoding request failed (' + res.status + ')');
+  const data = await res.json();
+  if (!data.results || !data.results.length) throw new Error('No location found for "' + q + '". Try "city, state" or a ZIP code.');
+  return data.results;
+}
+
+function placeLabel(g) {
+  return [g.name, g.admin1, g.country_code].filter(Boolean).join(', ');
+}
+
+async function lookup(chosen) {
+  const q = document.getElementById('loc').value.trim();
+  const date = document.getElementById('date').value;
+  const time = document.getElementById('time').value || '12:00';
+  document.getElementById('alts').innerHTML = '';
+
+  if (!q && !chosen) { setStatus('Enter a location.', true); return; }
+  if (!date) { setStatus('Pick a date.', true); return; }
+
+  const btn = document.getElementById('go');
+  btn.disabled = true;
+  setStatus('Resolving location…');
+
+  try {
+    let geo, alternates = [];
+    if (chosen) {
+      geo = chosen;
+    } else {
+      const results = await geocode(q);
+      geo = results[0];
+      alternates = results.slice(1);
+    }
+
+    setStatus('Fetching conditions for ' + placeLabel(geo) + '…');
+
+    // Archive API lags a few days behind; use the forecast API (which keeps
+    // ~3 months of past data) for anything in the last 10 days.
+    const target = new Date(date + 'T00:00:00');
+    const ageDays = (Date.now() - target.getTime()) / 86400000;
+    const useForecast = ageDays < 10;
+    const base = useForecast
+      ? 'https://api.open-meteo.com/v1/forecast'
+      : 'https://archive-api.open-meteo.com/v1/archive';
+
+    const hourlyVars = [
+      'temperature_2m','apparent_temperature','relative_humidity_2m','dew_point_2m',
+      'precipitation','snowfall','weather_code','cloud_cover',
+      'wind_speed_10m','wind_direction_10m','wind_gusts_10m'
+    ].join(',');
+
+    let url = base +
+      '?latitude=' + geo.latitude + '&longitude=' + geo.longitude +
+      '&start_date=' + date + '&end_date=' + date +
+      '&hourly=' + hourlyVars +
+      '&daily=sunrise,sunset' +
+      '&timezone=auto';
+    if (unit === 'F') {
+      url += '&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch';
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body && body.reason) || 'Weather request failed (' + res.status + ')');
+    }
+    const wx = await res.json();
+    if (!wx.hourly || !wx.hourly.time || !wx.hourly.time.length) {
+      throw new Error('No hourly data returned for that date.');
+    }
+
+    // Find the nearest hour to the requested time
+    const hh = parseInt(time.slice(0, 2), 10);
+    const mm = parseInt(time.slice(3, 5), 10) || 0;
+    const wantHour = mm >= 30 ? Math.min(hh + 1, 23) : hh;
+    let idx = wx.hourly.time.findIndex(t => t.startsWith(date) && parseInt(t.slice(11, 13), 10) === wantHour);
+    if (idx === -1) idx = Math.min(wantHour, wx.hourly.time.length - 1);
+
+    render(geo, wx, idx, date, time, useForecast);
+
+    // Offer alternate matches as chips
+    if (alternates.length) {
+      const wrap = document.getElementById('alts');
+      const note = document.createElement('span');
+      note.className = 'status';
+      alternates.forEach(a => {
+        const b = document.createElement('button');
+        b.textContent = placeLabel(a);
+        b.onclick = () => lookup(a);
+        wrap.appendChild(b);
+      });
+      setStatus('Showing ' + placeLabel(geo) + '. Not right? Pick an alternate below.');
+    } else {
+      setStatus('');
+    }
+  } catch (err) {
+    setStatus(err.message, true);
+    document.getElementById('report').classList.remove('show');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function fmt(v, suffix) {
+  if (v == null || Number.isNaN(v)) return '—';
+  return v + (suffix || '');
+}
+
+function render(geo, wx, idx, date, time, usedForecast) {
+  const h = wx.hourly;
+  const tUnit = unit === 'F' ? '°F' : '°C';
+  const wUnit = unit === 'F' ? ' mph' : ' km/h';
+  const pUnit = unit === 'F' ? ' in' : ' mm';
+
+  document.getElementById('rPlace').textContent = placeLabel(geo);
+  const niceDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US',
+    { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('rWhen').textContent =
+    niceDate + ' · ' + h.time[idx].slice(11) + ' local (' + (wx.timezone_abbreviation || wx.timezone) + ')';
+
+  document.getElementById('rTemp').textContent = fmt(h.temperature_2m[idx], tUnit);
+  document.getElementById('rFeels').textContent = 'Feels like ' + fmt(h.apparent_temperature[idx], tUnit);
+  document.getElementById('rCond').textContent = WMO[h.weather_code[idx]] || 'Code ' + h.weather_code[idx];
+
+  // Daylight check
+  const dl = document.getElementById('rDaylight');
+  const dlText = document.getElementById('rDaylightText');
+  try {
+    const t = new Date(h.time[idx]);
+    const rise = new Date(wx.daily.sunrise[0]);
+    const set = new Date(wx.daily.sunset[0]);
+    const isDay = t >= rise && t <= set;
+    dl.className = 'daylight ' + (isDay ? 'day' : 'dark');
+    dlText.textContent = isDay ? 'Daylight' : 'Dark';
+    dl.title = 'Sunrise ' + wx.daily.sunrise[0].slice(11) + ' · Sunset ' + wx.daily.sunset[0].slice(11);
+  } catch (e) {
+    dl.style.display = 'none';
+  }
+
+  const cells = [
+    ['Precipitation', fmt(h.precipitation[idx], pUnit)],
+    ['Snowfall', fmt(h.snowfall[idx], unit === 'F' ? ' in' : ' cm')],
+    ['Wind', fmt(h.wind_speed_10m[idx], wUnit) + ' ' + compass(h.wind_direction_10m[idx])],
+    ['Gusts', fmt(h.wind_gusts_10m[idx], wUnit)],
+    ['Humidity', fmt(h.relative_humidity_2m[idx], '%')],
+    ['Dew point', fmt(h.dew_point_2m[idx], tUnit)],
+    ['Cloud cover', fmt(h.cloud_cover[idx], '%')],
+    ['Sunrise / Sunset', (wx.daily && wx.daily.sunrise ? wx.daily.sunrise[0].slice(11) + ' / ' + wx.daily.sunset[0].slice(11) : '—')]
+  ];
+  document.getElementById('rGrid').innerHTML = cells.map(c =>
+    '<div class="cell"><div class="k">' + c[0] + '</div><div class="v">' + c[1] + '</div></div>'
+  ).join('');
+
+  // Surrounding hours table (±3)
+  const lo = Math.max(0, idx - 3), hi = Math.min(h.time.length - 1, idx + 3);
+  let rows = '<tr><th>Time</th><th>Temp</th><th>Precip</th><th>Wind</th><th>Gusts</th><th>Conditions</th></tr>';
+  for (let i = lo; i <= hi; i++) {
+    rows += '<tr' + (i === idx ? ' class="target"' : '') + '>' +
+      '<td>' + h.time[i].slice(11) + '</td>' +
+      '<td>' + fmt(h.temperature_2m[i], '°') + '</td>' +
+      '<td>' + fmt(h.precipitation[i]) + '</td>' +
+      '<td>' + fmt(h.wind_speed_10m[i]) + ' ' + compass(h.wind_direction_10m[i]) + '</td>' +
+      '<td>' + fmt(h.wind_gusts_10m[i]) + '</td>' +
+      '<td>' + (WMO[h.weather_code[i]] || h.weather_code[i]) + '</td></tr>';
+  }
+  document.getElementById('rTable').innerHTML = rows;
+
+  document.getElementById('rSource').textContent =
+    'Source: Open-Meteo ' + (usedForecast ? 'forecast archive (recent dates)' : 'historical reanalysis (ERA5/ECMWF)') +
+    ' · Grid point ' + geo.latitude.toFixed(3) + ', ' + geo.longitude.toFixed(3) +
+    ' · Modeled hourly data, not a certified station record.';
+
+  document.getElementById('report').classList.add('show');
+}
+</script>
+</body>
+</html>
