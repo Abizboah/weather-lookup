@@ -334,6 +334,27 @@ function compass(deg) {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
+function tzOffsetMinutes(tz, date) {
+  // UTC offset of the IANA zone on the given date, in minutes
+  try {
+    const v = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' })
+      .formatToParts(new Date(date + 'T12:00:00Z'))
+      .find(p => p.type === 'timeZoneName').value;
+    if (v === 'GMT') return 0;
+    const m = v.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if (!m) return null;
+    return (m[1] === '-' ? -1 : 1) * (parseInt(m[2], 10) * 60 + (m[3] ? parseInt(m[3], 10) : 0));
+  } catch (e) { return null; }
+}
+
+function shiftClock(iso, shiftMin) {
+  // "YYYY-MM-DDTHH:MM" (+ a correction in minutes) → "HH:MM"
+  if (!shiftMin) return iso.slice(11, 16);
+  const d = new Date(iso + ':00Z');
+  d.setUTCMinutes(d.getUTCMinutes() + shiftMin);
+  return d.toISOString().slice(11, 16);
+}
+
 function tzLabel(wx, date) {
   // timezone_abbreviation reflects the offset today, not on the queried date
   // (a January lookup would show EDT in summer); derive it for the date.
@@ -458,14 +479,22 @@ async function lookup(chosen) {
       throw new Error('No hourly data returned for that date.');
     }
 
+    // timezone=auto pins every timestamp to today's UTC offset, so dates in
+    // the other DST regime come back shifted (a January "14:00" stamp is
+    // really 13:00 EST when queried in July). Correct by the difference.
+    const offMin = tzOffsetMinutes(wx.timezone, date);
+    const shiftMin = (offMin == null || wx.utc_offset_seconds == null)
+      ? 0 : offMin - Math.round(wx.utc_offset_seconds / 60);
+
     // Find the nearest hour to the requested time
     const hh = parseInt(time.slice(0, 2), 10);
     const mm = parseInt(time.slice(3, 5), 10) || 0;
     const wantHour = mm >= 30 ? Math.min(hh + 1, 23) : hh;
-    let idx = wx.hourly.time.findIndex(t => t.startsWith(date) && parseInt(t.slice(11, 13), 10) === wantHour);
-    if (idx === -1) idx = Math.min(wantHour, wx.hourly.time.length - 1);
+    const stampHour = Math.min(23, Math.max(0, wantHour - Math.round(shiftMin / 60)));
+    let idx = wx.hourly.time.findIndex(t => t.startsWith(date) && parseInt(t.slice(11, 13), 10) === stampHour);
+    if (idx === -1) idx = Math.min(stampHour, wx.hourly.time.length - 1);
 
-    render(geo, wx, idx, date, time, useForecast);
+    render(geo, wx, idx, date, time, useForecast, shiftMin);
 
     // Offer alternate matches as chips
     if (alternates.length) {
@@ -495,7 +524,7 @@ function fmt(v, suffix) {
   return v + (suffix || '');
 }
 
-function render(geo, wx, idx, date, time, usedForecast) {
+function render(geo, wx, idx, date, time, usedForecast, shiftMin) {
   const h = wx.hourly;
   const tUnit = unit === 'F' ? '°F' : '°C';
   const wUnit = unit === 'F' ? ' mph' : ' km/h';
@@ -505,7 +534,7 @@ function render(geo, wx, idx, date, time, usedForecast) {
   const niceDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US',
     { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   document.getElementById('rWhen').textContent =
-    niceDate + ' · ' + h.time[idx].slice(11) + ' local (' + tzLabel(wx, date) + ')';
+    niceDate + ' · ' + shiftClock(h.time[idx], shiftMin) + ' local (' + tzLabel(wx, date) + ')';
 
   document.getElementById('rTemp').textContent = fmt(h.temperature_2m[idx], tUnit);
   document.getElementById('rFeels').textContent = 'Feels like ' + fmt(h.apparent_temperature[idx], tUnit);
@@ -521,7 +550,7 @@ function render(geo, wx, idx, date, time, usedForecast) {
     const isDay = t >= rise && t <= set;
     dl.className = 'daylight ' + (isDay ? 'day' : 'dark');
     dlText.textContent = isDay ? 'Daylight' : 'Dark';
-    dl.title = 'Sunrise ' + wx.daily.sunrise[0].slice(11) + ' · Sunset ' + wx.daily.sunset[0].slice(11);
+    dl.title = 'Sunrise ' + shiftClock(wx.daily.sunrise[0], shiftMin) + ' · Sunset ' + shiftClock(wx.daily.sunset[0], shiftMin);
   } catch (e) {
     dl.style.display = 'none';
   }
@@ -534,7 +563,7 @@ function render(geo, wx, idx, date, time, usedForecast) {
     ['Humidity', fmt(h.relative_humidity_2m[idx], '%')],
     ['Dew point', fmt(h.dew_point_2m[idx], tUnit)],
     ['Cloud cover', fmt(h.cloud_cover[idx], '%')],
-    ['Sunrise / Sunset', (wx.daily && wx.daily.sunrise ? wx.daily.sunrise[0].slice(11) + ' / ' + wx.daily.sunset[0].slice(11) : '—')]
+    ['Sunrise / Sunset', (wx.daily && wx.daily.sunrise ? shiftClock(wx.daily.sunrise[0], shiftMin) + ' / ' + shiftClock(wx.daily.sunset[0], shiftMin) : '—')]
   ];
   document.getElementById('rGrid').innerHTML = cells.map(c =>
     '<div class="cell"><div class="k">' + c[0] + '</div><div class="v">' + c[1] + '</div></div>'
@@ -545,7 +574,7 @@ function render(geo, wx, idx, date, time, usedForecast) {
   let rows = '<tr><th>Time</th><th>Temp</th><th>Precip</th><th>Wind</th><th>Gusts</th><th>Conditions</th></tr>';
   for (let i = lo; i <= hi; i++) {
     rows += '<tr' + (i === idx ? ' class="target"' : '') + '>' +
-      '<td>' + h.time[i].slice(11) + '</td>' +
+      '<td>' + shiftClock(h.time[i], shiftMin) + '</td>' +
       '<td>' + fmt(h.temperature_2m[i], '°') + '</td>' +
       '<td>' + fmt(h.precipitation[i]) + '</td>' +
       '<td>' + fmt(h.wind_speed_10m[i]) + ' ' + compass(h.wind_direction_10m[i]) + '</td>' +
