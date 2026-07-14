@@ -334,20 +334,64 @@ function compass(deg) {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
+function tzLabel(wx, date) {
+  // timezone_abbreviation reflects the offset today, not on the queried date
+  // (a January lookup would show EDT in summer); derive it for the date.
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: wx.timezone, timeZoneName: 'short' })
+      .formatToParts(new Date(date + 'T12:00:00'))
+      .find(p => p.type === 'timeZoneName').value;
+  } catch (e) {
+    return wx.timezone_abbreviation || wx.timezone;
+  }
+}
+
 function setStatus(msg, isErr) {
   const el = document.getElementById('status');
   el.textContent = msg;
   el.classList.toggle('err', !!isErr);
 }
 
+const US_STATES = {
+  AL:'Alabama', AK:'Alaska', AZ:'Arizona', AR:'Arkansas', CA:'California',
+  CO:'Colorado', CT:'Connecticut', DE:'Delaware', DC:'District of Columbia',
+  FL:'Florida', GA:'Georgia', HI:'Hawaii', ID:'Idaho', IL:'Illinois',
+  IN:'Indiana', IA:'Iowa', KS:'Kansas', KY:'Kentucky', LA:'Louisiana',
+  ME:'Maine', MD:'Maryland', MA:'Massachusetts', MI:'Michigan', MN:'Minnesota',
+  MS:'Mississippi', MO:'Missouri', MT:'Montana', NE:'Nebraska', NV:'Nevada',
+  NH:'New Hampshire', NJ:'New Jersey', NM:'New Mexico', NY:'New York',
+  NC:'North Carolina', ND:'North Dakota', OH:'Ohio', OK:'Oklahoma',
+  OR:'Oregon', PA:'Pennsylvania', RI:'Rhode Island', SC:'South Carolina',
+  SD:'South Dakota', TN:'Tennessee', TX:'Texas', UT:'Utah', VT:'Vermont',
+  VA:'Virginia', WA:'Washington', WV:'West Virginia', WI:'Wisconsin', WY:'Wyoming',
+  PR:'Puerto Rico'
+};
+
 async function geocode(q) {
+  // The search endpoint only matches bare place names — "Erie, PA" returns
+  // nothing. Search the part before the comma, then use the rest to filter.
+  let name = q, region = '';
+  const comma = q.indexOf(',');
+  if (comma > 0) {
+    name = q.slice(0, comma).trim();
+    region = q.slice(comma + 1).trim();
+  }
   const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
-    encodeURIComponent(q) + '&count=5&language=en&format=json';
+    encodeURIComponent(name) + '&count=' + (region ? 20 : 5) + '&language=en&format=json';
   const res = await fetch(url);
   if (!res.ok) throw new Error('Geocoding request failed (' + res.status + ')');
   const data = await res.json();
-  if (!data.results || !data.results.length) throw new Error('No location found for "' + q + '". Try "city, state" or a ZIP code.');
-  return data.results;
+  let results = data.results || [];
+  if (region && results.length) {
+    const want = (US_STATES[region.toUpperCase()] || region).toLowerCase();
+    const matches = results.filter(r =>
+      (r.admin1 || '').toLowerCase() === want ||
+      (r.country || '').toLowerCase() === want ||
+      (r.country_code || '').toLowerCase() === region.toLowerCase());
+    if (matches.length) results = matches;
+  }
+  if (!results.length) throw new Error('No location found for "' + q + '". Try "city, state" or a ZIP code.');
+  return results.slice(0, 5);
 }
 
 function placeLabel(g) {
@@ -461,7 +505,7 @@ function render(geo, wx, idx, date, time, usedForecast) {
   const niceDate = new Date(date + 'T12:00:00').toLocaleDateString('en-US',
     { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   document.getElementById('rWhen').textContent =
-    niceDate + ' · ' + h.time[idx].slice(11) + ' local (' + (wx.timezone_abbreviation || wx.timezone) + ')';
+    niceDate + ' · ' + h.time[idx].slice(11) + ' local (' + tzLabel(wx, date) + ')';
 
   document.getElementById('rTemp').textContent = fmt(h.temperature_2m[idx], tUnit);
   document.getElementById('rFeels').textContent = 'Feels like ' + fmt(h.apparent_temperature[idx], tUnit);
